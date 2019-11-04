@@ -88,6 +88,7 @@ def select_gene_cols(df, genes, mask=True, thresh=0.2):
     df_str = df.apply(lambda x: x.astype(str).str.upper())
     df_is_gene = df_str.isin(genes)
     gene_cols = df_str.columns[df_is_gene.sum(axis=0) > thresh]
+    
     df = df[gene_cols].copy()
     # so values are not detected by regex
     if mask:
@@ -109,7 +110,7 @@ def check_df(df, genes):
     df_sub.fillna('', inplace=True)
 
     # apply over rows/columns (depending on which is fewer)
-    df_detect = df.apply(has_mangled, axis=int(is_longer(df)))
+    df_detect = df_sub.apply(has_mangled, axis=int(is_longer(df)))
 
     # all non-matches will be set to `nan`
     found = df[df_detect]
