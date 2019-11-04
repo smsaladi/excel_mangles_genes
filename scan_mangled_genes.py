@@ -1,16 +1,17 @@
 """
-This file scans for any mangled gene identifiers 
+This file scans for any mangled gene identifiers
 
-using regexes from 
+using regexes from
 https://sourceforge.net/projects/genenameerrorsscreen/
 
 corresponding paper:
-Mark Ziemann, Yotam Eren & Assam El-Osta 
+Mark Ziemann, Yotam Eren & Assam El-Osta
 Genome Biology volume 17, Article number: 177 (2016)
 https://doi.org/10.1186/s13059-016-1044-7
 
 """
 
+import sys
 import re
 import datetime
 
@@ -18,7 +19,6 @@ import click
 
 import numpy as np
 import pandas as pd
-import xlrd
 
 mangled_re = [
     # XX/XX/XXxx
@@ -26,7 +26,7 @@ mangled_re = [
     # mm-dd-YYyy
     '[0,1]{1,2}-[0-9]{1,2}-\d{2}(?:\d{2})?',
     # dd-mm-YYyy
-    
+
     # XX-XX-XXxx
     '[0-9]{1,2}-[0-9]{1,2}-\d{2}(?:\d{2})?',
     # D-MMM or DD-MMM
@@ -38,11 +38,10 @@ mangled_re = [
 
 
 # combine into a single large regex
-mangled_re = ['(' + x + ')' for x in mangled_re]
+mangled_re = ['(?:' + x + ')' for x in mangled_re]
 # allow spaces on either side but nothing else
-re_all = '^\s*' + '|'.join(mangled_re) + '\s*$'
+re_all = '|'.join(mangled_re)
 re_all = re.compile(re_all)
-print(re_all)
 
 def not_manged(ser):
     return ser.str.contains('Date')
@@ -52,16 +51,16 @@ def has_mangled(ser, maxcell=20):
     """
     # easy when excel stores cell as datetime
     detect_dt = ser.apply(lambda x: isinstance(x, datetime.datetime))
-    
+
     # pd.Series.str balks if non-string types are mixed in
     ser = ser.astype(str)
     # if the cell is long, probably not a mangled genename
     ser = ser.mask(ser.str.len() > maxcell, "")
-   
+
     # detect dates as strings
     detect_re = ser.str.contains(re_all)
 
-    return detect_re | detect_dt 
+    return detect_re | detect_dt
 
 def count_names(ser, genes):
     if ser.size == 0:
@@ -84,7 +83,7 @@ def select_gene_cols(df, genes, mask=True, thresh=0.2):
 
     # multiple levels to select string/datetime columns
     df = df.select_dtypes('object')
-    
+
     # find columns with known gene names
     df_str = df.apply(lambda x: x.astype(str).str.upper())
     df_is_gene = df_str.isin(genes)
@@ -108,10 +107,10 @@ def check_df(df, genes):
         df_sub = df_sub.T
 
     df_sub.fillna('', inplace=True)
-    
+
     # apply over rows/columns (depending on which is fewer)
     df_detect = df.apply(has_mangled, axis=int(is_longer(df)))
-    
+
     # all non-matches will be set to `nan`
     found = df[df_detect]
     found = found.values[(~pd.isnull(found)).values]
@@ -122,14 +121,20 @@ def check_df(df, genes):
 
 def read_file(fn):
     if fn.endswith('csv'):
-        df = pd.read_csv(fn, low_memory=False)
-        all_df = {'csv': df}
+        try:
+           df = pd.read_csv(fn, low_memory=False)
+           all_df = {'csv': df}
+        except Exception as e:
+            print(fn + ": Unable to parse." + str(e), file=sys.stderr)
+            all_df = {}
     else:
         try:
             all_df = pd.read_excel(fn, sheet_name=None)
-        except xlrd.biffh.XLRDError:
-            print("xlrd unable to read file: " + fn, file=sys.stderr)
+        except Exception as e:
+            print(fn + ": Unable to read file. " + str(e), file=sys.stderr)
             all_df = {}
+
+    all_df = {k:v for k,v in all_df.items() if v.size > 0}
 
     return all_df
 
@@ -141,6 +146,7 @@ def check_all_files(fns, refnames):
     genes = genes[0].str.upper().unique()
 
     for f in fns:
+        print("# ", f, file=sys.stderr)
         all_df = read_file(f)
         for name, df in all_df.items():
             count, vals = check_df(df, genes)
