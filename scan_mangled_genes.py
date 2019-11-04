@@ -84,12 +84,16 @@ def select_gene_cols(df, genes, mask=True, thresh=0.2):
     # multiple levels to select string/datetime columns
     df = df.select_dtypes('object')
 
+    # pandas._libs.tslibs.nattype.NaTType becomes 'NAT' (which is a gene)
+    # when cast to a string, mask these
+    df = df.mask(df.isin([pd.NaT]), '')
+
     # find columns with known gene names
     df_str = df.apply(lambda x: x.astype(str).str.upper())
     df_is_gene = df_str.isin(genes)
     gene_cols = df_str.columns[df_is_gene.sum(axis=0) > thresh]
-    
     df = df[gene_cols].copy()
+    
     # so values are not detected by regex
     if mask:
         df.mask(df_is_gene, "", inplace=True)
